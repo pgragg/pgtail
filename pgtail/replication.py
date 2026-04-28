@@ -31,6 +31,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
+from psycopg import pq
 
 from pgtail.events import ChangeEvent
 from pgtail.options import Settings
@@ -107,10 +108,13 @@ def _setup_publication_and_slot(
             slot_existed = cur.fetchone() is not None
 
         if not slot_existed:
-            # temporary=True for ephemeral slots so the server cleans up if we crash.
+            # We always create a permanent slot at the SQL level. "Temporary" slots
+            # in Postgres are tied to the session that created them, so they would
+            # vanish before the replication connection opens. We track temp/persistent
+            # ourselves and drop the slot on exit when ephemeral.
             cur.execute(
-                "SELECT pg_create_logical_replication_slot(%s, 'pgoutput', %s)",
-                (slot_name, slot_is_temp),
+                "SELECT pg_create_logical_replication_slot(%s, 'pgoutput', false)",
+                (slot_name,),
             )
 
     try:
@@ -234,23 +238,61 @@ def stream_changes(settings: Settings) -> Iterator[ChangeEvent]:
 def _stream_loop(
     repl_conn: psycopg.Connection[Any], pub_name: str, slot_name: str
 ) -> Iterator[ChangeEvent]:
-    cur = repl_conn.cursor()
+    """Drive START_REPLICATION via the low-level pgconn (libpq) API.
+
+    psycopg3 does not yet support COPY_BOTH at the cursor level, so we send
+    queries and read copy data directly. Status updates are written back via
+    ``put_copy_data``.
+    """
+    pgconn = repl_conn.pgconn
     start_sql = (
         f"START_REPLICATION SLOT {slot_name} LOGICAL 0/0 ("
         f"proto_version '1', publication_names '{pub_name}')"
-    )
-    # ``copy()`` exposes the COPY stream as an iterable of bytes rows.
-    # On psycopg 3.2+, replication commands return a COPY OUT result.
+    ).encode()
+    pgconn.send_query(start_sql)
+    result = pgconn.get_result()
+    if result is None:
+        raise RuntimeError("replication: no result from START_REPLICATION")
+    if result.status != pq.ExecStatus.COPY_BOTH:
+        err = (result.error_message or b"").decode(errors="replace")
+        raise RuntimeError(f"replication: expected COPY_BOTH, got status={result.status} ({err})")
+
     relations: dict[int, RelationMsg] = {}
     current_txid: int | None = None
     last_received_lsn = 0
     last_keepalive = datetime.now(tz=UTC)
 
-    with cur.copy(start_sql) as copy:
-        for row in copy.rows():  # row is bytes
-            if row is None:
+    def send_status(lsn: int, *, request_reply: bool = False) -> None:
+        pgconn.put_copy_data(_build_status_update(lsn, request_reply=request_reply))
+        pgconn.flush()
+
+    try:
+        while True:
+            # Drain any pending bytes; non-blocking.
+            pgconn.consume_input()
+            # psycopg3 returns (nbytes, memoryview):
+            #   nbytes > 0  -> message available
+            #   nbytes == 0 -> no data yet (async would-block)
+            #   nbytes == -1 -> end of COPY stream
+            #   nbytes == -2 -> error
+            nbytes, view = pgconn.get_copy_data(1)
+            if nbytes == -1:
+                break
+            if nbytes == -2:
+                err = (pgconn.error_message or b"").decode(errors="replace")
+                raise RuntimeError(f"replication: get_copy_data error: {err}")
+            if nbytes == 0:
+                # Would block. Wait briefly for more data and continue.
+                fd = pgconn.socket
+                select.select([fd], [], [], 1.0)
+                # Heartbeat keepalive every ~10s.
+                now = datetime.now(tz=UTC)
+                if now - last_keepalive > timedelta(seconds=10):
+                    send_status(last_received_lsn)
+                    last_keepalive = now
                 continue
-            data = bytes(row[0]) if isinstance(row, (tuple, list)) else bytes(row)
+
+            data = bytes(view)
             try:
                 kind, fields = _parse_xlog_or_keepalive(data)
             except ValueError as exc:
@@ -260,10 +302,9 @@ def _stream_loop(
             if kind == "k":
                 last_received_lsn = max(last_received_lsn, fields["wal_end"])
                 if fields["reply_requested"]:
-                    copy.write(_build_status_update(last_received_lsn, request_reply=False))
+                    send_status(last_received_lsn)
                 continue
 
-            # XLogData
             wal_start: int = fields["wal_start"]
             wal_end: int = fields["wal_end"]
             payload: bytes = fields["payload"]
@@ -280,8 +321,7 @@ def _stream_loop(
                 continue
             if isinstance(msg, CommitMsg):
                 current_txid = None
-                # Acknowledge commit LSN so the server can advance the slot.
-                copy.write(_build_status_update(msg.end_lsn, request_reply=False))
+                send_status(msg.end_lsn)
                 continue
             if isinstance(msg, OriginMsg | TypeMsg):
                 continue
@@ -289,15 +329,23 @@ def _stream_loop(
                 relations[msg.oid] = msg
                 continue
 
-            # Send periodic keepalive every ~10s of streaming.
             now = datetime.now(tz=UTC)
             if now - last_keepalive > timedelta(seconds=10):
-                copy.write(_build_status_update(last_received_lsn, request_reply=False))
+                send_status(last_received_lsn)
                 last_keepalive = now
 
             event = _msg_to_event(msg, relations, current_txid, wal_start)
             if event is not None:
                 yield event
+    finally:
+        # Best-effort: tell the server we're done, then drain any trailing results.
+        try:
+            pgconn.put_copy_end()
+            pgconn.flush()
+            while pgconn.get_result() is not None:
+                pass
+        except Exception as exc:  # pragma: no cover
+            log.debug("copy-end ignored: %s", exc)
 
 
 def _msg_to_event(

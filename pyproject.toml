@@ -67,3 +67,14 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "integration: tests that require a live Postgres (Docker / testcontainers)",
+]
+
+[tool.coverage.run]
+source = ["pgtail"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
