@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from pgtail import __version__
+from pgtail.collapse import Collapser
 from pgtail.connection import ConnectionError_, validate_connection
 from pgtail.filters import event_allowed
 from pgtail.format import Renderer
@@ -164,11 +165,15 @@ def run(
     )
 
     renderer = Renderer.from_settings(settings)
+    collapser = Collapser(settings=settings)
     try:
         for event in stream_changes(settings):
             if not event_allowed(event, settings):
                 continue
-            renderer.emit(event)
+            for shaped in collapser.process(event):
+                renderer.emit(shaped)
+        for shaped in collapser.flush():
+            renderer.emit(shaped)
     except KeyboardInterrupt:
         typer.secho(
             "\npgtail: stopped (Ctrl-C). cleanup complete.",

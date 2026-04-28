@@ -181,6 +181,21 @@ class Renderer:
         line.append(event.op.upper().ljust(8), style=f"bold {op_color}")
         line.append(event.qualified, style="bold")
 
+        # Collapser-synthesized summary / notice events (ticket 007).
+        if event.extra.get("collapsed_count"):
+            n = event.extra["collapsed_count"]
+            line.append("  ")
+            line.append(f"{n:,} rows (collapsed)", style="dim italic")
+            return line
+        if event.extra.get("collapse_notice"):
+            t = event.extra.get("threshold", s.collapse_threshold)
+            line.append("  ")
+            line.append(
+                f"… collapsing remainder after {t:,} rows (use --expand-all to disable)",
+                style="dim italic",
+            )
+            return line
+
         if s.verbose:
             extra: list[str] = []
             if event.txid is not None:
@@ -251,6 +266,13 @@ class Renderer:
             "schema": event.schema,
             "table": event.table,
         }
+        if event.extra.get("collapsed_count"):
+            payload["collapsed_count"] = event.extra["collapsed_count"]
+            return json.dumps(payload, default=str)
+        if event.extra.get("collapse_notice"):
+            payload["collapse_notice"] = True
+            payload["threshold"] = event.extra.get("threshold", s.collapse_threshold)
+            return json.dumps(payload, default=str)
         if s.verbose:
             payload["txid"] = event.txid
             payload["lsn"] = event.lsn
