@@ -1,17 +1,52 @@
+# Byte-compiled / cached
 __pycache__/
 *.py[cod]
+*.so
+
+# Packaging / build
+*.egg
 *.egg-info/
 .eggs/
 build/
 dist/
+wheels/
+*.whl
+
+# Virtual envs
 .venv/
 venv/
+env/
+
+# Env / secrets
 .env
+.env.*
+!.env.example
+
+# Test / coverage
 .coverage
 .coverage.*
+coverage.xml
+*.cover
 htmlcov/
 .pytest_cache/
+.tox/
+.nox/
+
+# Type / lint caches
 .ruff_cache/
 .mypy_cache/
-*.log
+.pyre/
+.pytype/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
