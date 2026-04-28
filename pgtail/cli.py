@@ -15,6 +15,7 @@ from pgtail.options import (
     parse_csv_tuple,
     parse_ops,
 )
+from pgtail.preflight import PreflightError, run_preflight
 
 app = typer.Typer(
     name="pgtail",
@@ -144,6 +145,13 @@ def run(
     except ConnectionError_ as e:
         typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from e
+
+    try:
+        run_preflight(settings.dsn)
+    except PreflightError as e:
+        typer.secho("preflight check failed:\n", fg=typer.colors.RED, err=True, bold=True)
+        typer.secho(str(e), fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(3) from e
 
     typer.echo(
         f"connected to {info.current_database} as {info.current_user} "
