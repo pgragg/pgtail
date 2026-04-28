@@ -16,19 +16,23 @@ via logical replication.** No triggers. No schema changes. Read-only on your DB.
 ## 30-second quickstart
 
 ```bash
-# 1. Install (PyPI distribution name is `pgtail-cdc`; the installed command is `pgtail`)
-uv tool install pgtail-cdc        # or: pipx install pgtail-cdc / pip install pgtail-cdc
-
-# Note: an unrelated, older package named `pgtail` (by Chillar Anand) exists on
-# PyPI — it polls a single table with SELECT. This project is a different tool
-# that streams INSERT/UPDATE/DELETE via logical replication, so it ships under
-# a distinct name to avoid collision.
+# 1. Install from source (not yet published to PyPI)
+git clone https://github.com/pgragg/pgtail.git
+cd pgtail
+uv sync                                    # creates .venv with dependencies
 
 # 2. Make sure Postgres has logical replication on (one-time, see below)
 
 # 3. Tail it
-pgtail postgresql://user:pw@localhost:5432/mydb
+uv run pgtail postgresql://user:pw@localhost:5432/mydb
 ```
+
+> **Heads-up on naming.** An unrelated, older package named `pgtail` (by
+> Chillar Anand) exists on PyPI — it polls a single table with `SELECT`.
+> This project is a different tool that streams INSERT/UPDATE/DELETE via
+> logical replication. When/if it ships to PyPI, it will do so under the
+> distinct distribution name **`pgtail-cdc`** to avoid collision; the
+> installed command is still `pgtail`.
 
 That's it. Make a change in another window — `INSERT INTO users …` — and watch
 it scroll by.
