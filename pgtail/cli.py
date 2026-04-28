@@ -8,6 +8,7 @@ import typer
 
 from pgtail import __version__
 from pgtail.connection import ConnectionError_, validate_connection
+from pgtail.format import Renderer
 from pgtail.options import (
     DEFAULT_OPS,
     DEFAULT_REDACT,
@@ -161,15 +162,12 @@ def run(
         err=True,
     )
 
+    renderer = Renderer.from_settings(settings)
     try:
         for event in stream_changes(settings):
-            # Ticket 005 plugs the formatter in here. For now print a compact repr
-            # so the stream is visible end-to-end.
-            typer.echo(
-                f"{event.op.upper()} {event.qualified} "
-                f"new={event.new_row} old={event.old_row} "
-                f"changed={list(event.changed_fields)}"
-            )
+            if event.op not in settings.ops:
+                continue
+            renderer.emit(event)
     except KeyboardInterrupt:
         typer.secho(
             "\npgtail: stopped (Ctrl-C). cleanup complete.",
@@ -177,6 +175,8 @@ def run(
             err=True,
         )
         raise typer.Exit(0) from None
+    finally:
+        renderer.close()
 
 
 def main() -> None:
