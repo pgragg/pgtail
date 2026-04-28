@@ -8,6 +8,7 @@ import typer
 
 from pgtail import __version__
 from pgtail.connection import ConnectionError_, validate_connection
+from pgtail.filters import event_allowed
 from pgtail.format import Renderer
 from pgtail.options import (
     DEFAULT_OPS,
@@ -165,7 +166,7 @@ def run(
     renderer = Renderer.from_settings(settings)
     try:
         for event in stream_changes(settings):
-            if event.op not in settings.ops:
+            if not event_allowed(event, settings):
                 continue
             renderer.emit(event)
     except KeyboardInterrupt:
