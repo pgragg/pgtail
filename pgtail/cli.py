@@ -8,6 +8,7 @@ import typer
 
 from pgtail import __version__
 from pgtail.collapse import Collapser
+from pgtail.config import ConfigError, load_config
 from pgtail.connection import ConnectionError_, validate_connection
 from pgtail.filters import event_allowed
 from pgtail.format import Renderer
@@ -107,6 +108,11 @@ def run(
         min=1,
         help="Collapse a single op on a single table after this many rows.",
     ),
+    config_path: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--config",
+        help="Path to a TOML config file (default: ./.pgtail.toml or ~/.config/pgtail/config.toml).",
+    ),
     version: bool = typer.Option(
         False,
         "--version",
@@ -116,6 +122,77 @@ def run(
     ),
 ) -> None:
     """Tail Postgres row changes with color."""
+    try:
+        cfg = load_config(config_path)
+    except ConfigError as e:
+        typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from e
+
+    if cfg:
+        from click.core import ParameterSource
+
+        cli_to_cfg = {
+            "dsn": "dsn",
+            "schema": "schema",
+            "tables": "tables",
+            "exclude": "exclude",
+            "ops": "ops",
+            "json_output": "json",
+            "no_color": "no_color",
+            "no_time": "no_time",
+            "verbose": "verbose",
+            "max_width": "max_width",
+            "redact": "redact",
+            "slot": "slot",
+            "log_file": "log_file",
+            "expand_all": "expand_all",
+            "collapse_threshold": "collapse_threshold",
+        }
+        bound: dict[str, object] = {
+            "dsn": dsn,
+            "schema": schema,
+            "tables": tables,
+            "exclude": exclude,
+            "ops": ops,
+            "json_output": json_output,
+            "no_color": no_color,
+            "no_time": no_time,
+            "verbose": verbose,
+            "max_width": max_width,
+            "redact": redact,
+            "slot": slot,
+            "log_file": log_file,
+            "expand_all": expand_all,
+            "collapse_threshold": collapse_threshold,
+        }
+        for cli_name, cfg_key in cli_to_cfg.items():
+            if cfg_key not in cfg:
+                continue
+            try:
+                source = ctx.get_parameter_source(cli_name)
+            except LookupError:
+                source = None
+            if source == ParameterSource.DEFAULT or source is None:
+                value = cfg[cfg_key]
+                if cli_name == "log_file" and isinstance(value, str):
+                    value = Path(value)
+                bound[cli_name] = value
+        dsn = bound["dsn"]  # type: ignore[assignment]
+        schema = bound["schema"]  # type: ignore[assignment]
+        tables = bound["tables"]  # type: ignore[assignment]
+        exclude = bound["exclude"]  # type: ignore[assignment]
+        ops = bound["ops"]  # type: ignore[assignment]
+        json_output = bound["json_output"]  # type: ignore[assignment]
+        no_color = bound["no_color"]  # type: ignore[assignment]
+        no_time = bound["no_time"]  # type: ignore[assignment]
+        verbose = bound["verbose"]  # type: ignore[assignment]
+        max_width = bound["max_width"]  # type: ignore[assignment]
+        redact = bound["redact"]  # type: ignore[assignment]
+        slot = bound["slot"]  # type: ignore[assignment]
+        log_file = bound["log_file"]  # type: ignore[assignment]
+        expand_all = bound["expand_all"]  # type: ignore[assignment]
+        collapse_threshold = bound["collapse_threshold"]  # type: ignore[assignment]
+
     resolved_dsn = Settings.resolve_dsn(dsn)
     if drop_slot_name is not None:
         if not resolved_dsn:
@@ -127,7 +204,7 @@ def run(
             raise typer.Exit(2)
         try:
             existed = drop_slot(resolved_dsn, drop_slot_name)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             typer.secho(f"error: could not drop slot: {e}", fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from e
         if existed:

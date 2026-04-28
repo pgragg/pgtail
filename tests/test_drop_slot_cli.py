@@ -33,7 +33,7 @@ def test_drop_slot_calls_helper(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_drop_slot_missing_slot_warns(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_drop(dsn: str, slot_name: str) -> bool:  # noqa: ARG001
+    def fake_drop(dsn: str, slot_name: str) -> bool:
         return False
 
     monkeypatch.setattr("pgtail.cli.drop_slot", fake_drop)

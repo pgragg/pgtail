@@ -389,9 +389,7 @@ def drop_slot(dsn: str, slot_name: str) -> bool:
         psycopg.connect(dsn, autocommit=True) as conn,
         conn.cursor() as cur,
     ):
-        cur.execute(
-            "SELECT 1 FROM pg_replication_slots WHERE slot_name = %s", (slot_name,)
-        )
+        cur.execute("SELECT 1 FROM pg_replication_slots WHERE slot_name = %s", (slot_name,))
         existed = cur.fetchone() is not None
         if existed:
             cur.execute("SELECT pg_drop_replication_slot(%s)", (slot_name,))
