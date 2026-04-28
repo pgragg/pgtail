@@ -383,4 +383,25 @@ def _msg_to_event(
 
 
 # Re-export ``select`` so test stubs can monkeypatch it cleanly.
-__all__ = ["_build_status_update", "_parse_xlog_or_keepalive", "select", "stream_changes"]
+def drop_slot(dsn: str, slot_name: str) -> bool:
+    """Drop a logical replication slot by name. Returns True if it existed."""
+    with (
+        psycopg.connect(dsn, autocommit=True) as conn,
+        conn.cursor() as cur,
+    ):
+        cur.execute(
+            "SELECT 1 FROM pg_replication_slots WHERE slot_name = %s", (slot_name,)
+        )
+        existed = cur.fetchone() is not None
+        if existed:
+            cur.execute("SELECT pg_drop_replication_slot(%s)", (slot_name,))
+        return existed
+
+
+__all__ = [
+    "_build_status_update",
+    "_parse_xlog_or_keepalive",
+    "drop_slot",
+    "select",
+    "stream_changes",
+]

@@ -19,7 +19,7 @@ from pgtail.options import (
     parse_ops,
 )
 from pgtail.preflight import PreflightError, run_preflight
-from pgtail.replication import stream_changes
+from pgtail.replication import drop_slot, stream_changes
 
 app = typer.Typer(
     name="pgtail",
@@ -88,6 +88,11 @@ def run(
         "--slot",
         help="Use a persistent replication slot with this name (default: ephemeral).",
     ),
+    drop_slot_name: str | None = typer.Option(
+        None,
+        "--drop-slot",
+        help="Drop the named replication slot and exit. Useful for cleaning up after --slot.",
+    ),
     log_file: Path | None = typer.Option(  # noqa: B008
         None,
         "--log-file",
@@ -112,6 +117,26 @@ def run(
 ) -> None:
     """Tail Postgres row changes with color."""
     resolved_dsn = Settings.resolve_dsn(dsn)
+    if drop_slot_name is not None:
+        if not resolved_dsn:
+            typer.secho(
+                "error: --drop-slot needs a DSN (positional arg or $DATABASE_URL).",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2)
+        try:
+            existed = drop_slot(resolved_dsn, drop_slot_name)
+        except Exception as e:  # noqa: BLE001
+            typer.secho(f"error: could not drop slot: {e}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(2) from e
+        if existed:
+            typer.secho(f"dropped replication slot {drop_slot_name!r}.", fg=typer.colors.GREEN)
+        else:
+            typer.secho(
+                f"replication slot {drop_slot_name!r} did not exist.", fg=typer.colors.YELLOW
+            )
+        raise typer.Exit(0)
     if not resolved_dsn:
         typer.secho(
             "error: no DSN provided. Pass one as an argument or set DATABASE_URL.",
@@ -163,6 +188,14 @@ def run(
         fg=typer.colors.CYAN,
         err=True,
     )
+    if settings.slot:
+        typer.secho(
+            f"⚠  using persistent replication slot {settings.slot!r}. "
+            "WAL will accumulate on the server while pgtail is not running. "
+            f"Run `pgtail {settings.dsn} --drop-slot {settings.slot}` to remove it.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
     renderer = Renderer.from_settings(settings)
     collapser = Collapser(settings=settings)
