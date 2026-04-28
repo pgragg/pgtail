@@ -16,6 +16,7 @@ from pgtail.options import (
     parse_ops,
 )
 from pgtail.preflight import PreflightError, run_preflight
+from pgtail.replication import stream_changes
 
 app = typer.Typer(
     name="pgtail",
@@ -153,13 +154,29 @@ def run(
         typer.secho(str(e), fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(3) from e
 
-    typer.echo(
-        f"connected to {info.current_database} as {info.current_user} "
-        f"(server_version={info.server_version})"
+    typer.secho(
+        f"pgtail → {info.current_database} (user={info.current_user}, "
+        f"server_version={info.server_version}). Ctrl-C to stop.",
+        fg=typer.colors.CYAN,
+        err=True,
     )
-    typer.echo("pgtail scaffold connected — replication streaming arrives in ticket 004.")
-    # Keep settings reachable for future tickets without an unused-var warning.
-    _ = settings
+
+    try:
+        for event in stream_changes(settings):
+            # Ticket 005 plugs the formatter in here. For now print a compact repr
+            # so the stream is visible end-to-end.
+            typer.echo(
+                f"{event.op.upper()} {event.qualified} "
+                f"new={event.new_row} old={event.old_row} "
+                f"changed={list(event.changed_fields)}"
+            )
+    except KeyboardInterrupt:
+        typer.secho(
+            "\npgtail: stopped (Ctrl-C). cleanup complete.",
+            fg=typer.colors.CYAN,
+            err=True,
+        )
+        raise typer.Exit(0) from None
 
 
 def main() -> None:
