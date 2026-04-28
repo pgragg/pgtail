@@ -12,10 +12,10 @@ Ship v0.1.0.
 ## Tasks
 - [ ] Tag `v0.1.0`
 - [ ] GitHub Actions release workflow: build sdist + wheel, publish to PyPI via trusted publishing (OIDC)
-- [ ] Verify `pipx install pgtail` works from clean machine
+- [ ] Verify `pipx install pgtail-cdc` works from clean machine
 - [ ] Create GitHub Release with changelog notes + demo GIF
 - [ ] Post in relevant communities (r/PostgreSQL, HN Show, Lobsters) — optional
 
 ## Acceptance
-- `pipx install pgtail` from PyPI yields a working binary
+- `pipx install pgtail-cdc` from PyPI yields a working binary
 - v0.1.0 release page is live

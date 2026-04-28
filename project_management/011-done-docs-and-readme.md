@@ -26,7 +26,7 @@ Make it trivial for a new user to get pgtail running in 30 seconds.
 ## Completion notes
 
 - **README.md** rewritten end-to-end. Includes:
-  - 30-second quickstart (`uv tool install pgtail` → `pgtail $DATABASE_URL`).
+  - 30-second quickstart (`uv tool install pgtail-cdc` → `pgtail $DATABASE_URL`).
   - `wal_level=logical` setup snippet with verification queries.
   - Managed-provider matrix (RDS/Aurora, Cloud SQL, Azure, Supabase, Neon,
     Heroku) with the exact flag/parameter to flip on each.

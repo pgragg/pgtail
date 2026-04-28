@@ -16,8 +16,13 @@ via logical replication.** No triggers. No schema changes. Read-only on your DB.
 ## 30-second quickstart
 
 ```bash
-# 1. Install
-uv tool install pgtail            # or: pipx install pgtail / pip install pgtail
+# 1. Install (PyPI distribution name is `pgtail-cdc`; the installed command is `pgtail`)
+uv tool install pgtail-cdc        # or: pipx install pgtail-cdc / pip install pgtail-cdc
+
+# Note: an unrelated, older package named `pgtail` (by Chillar Anand) exists on
+# PyPI — it polls a single table with SELECT. This project is a different tool
+# that streams INSERT/UPDATE/DELETE via logical replication, so it ships under
+# a distinct name to avoid collision.
 
 # 2. Make sure Postgres has logical replication on (one-time, see below)
 
